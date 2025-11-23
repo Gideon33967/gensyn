@@ -2,26 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-  }
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-  }
-}
 body {
-  @apply bg-black text-white min-h-screen font-mono;
-}
-.terminal {
-  background: #0a0a0a;
-  border: 1px solid #333;
-  color: #00ff00;
-}
-.neural-node {
-  background: linear-gradient(45deg, #8b5cf6, #3b82f6);
-  border-radius: 50%;
-  box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+  font-family: system-ui, sans-serif;
 }
