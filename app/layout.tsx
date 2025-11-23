@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, Share2, Volume2 } from "lucide-react";
+import { Play, Pause, Share2 } from "lucide-react";
 import Confetti from "react-confetti";
 import * as tf from "@tensorflow/tfjs";
 
@@ -32,7 +32,7 @@ export default function Home() {
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const addLog = (msg: string) => {
-    setLogs(prev => [...prev, msg]);
+    setLogs((prev) => [...prev, msg]);
     setTimeout(() => logsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   };
 
@@ -51,70 +51,51 @@ export default function Home() {
     }
   };
 
-  const startNode = async () => {
-    setRunning(true);
-    setLogs([]);
-    setEarnings(0);
-    setProgress(0);
-    addLog("🚀 Node started — " + gpu.name);
-    addLog("🔗 Connected to GenSyn swarm");
+  useEffect(() => {
+    if (running && !paused) {
+      const runJob = async () => {
+        const job = jobs[Math.floor(Math.random() * jobs.length)];
+        addLog(`📦 New job: ${job.name}`);
+        playSound(600);
 
-    // Simulate job loop
-    while (running) {
-      if (paused) {
-        await new Promise(r => setTimeout(r, 500));
-        continue;
-      }
+        const model = tf.sequential();
+        model.add(tf.layers.dense({ units: 32, activation: "relu", inputShape: [10] }));
+        model.add(tf.layers.dense({ units: 1, activation: "sigmoid" }));
+        model.compile({ optimizer: "adam", loss: "binaryCrossentropy" });
 
-      const job = jobs[Math.floor(Math.random() * jobs.length)];
-      addLog(`📦 New job: ${job.name}`);
-      playSound(600);
+        const xs = tf.randomNormal([100, 10]);
+        const ys = tf.randomUniform([100, 1]).greater(0.5);
 
-      // Real tiny training with TF.js
-      const model = tf.sequential({
-        layers: [
-          tf.layers.dense({ units: 32, activation: "relu", inputShape: [10] }),
-          tf.layers.dense({ units: 1, activation: "sigmoid" }),
-        ],
-      });
-      model.compile({ optimizer: "adam", loss: "binaryCrossentropy" });
+        for (let i = 0; i < 12; i++) {
+          if (paused) return;
+          const h = await model.fit(xs, ys, { epochs: 1 });
+          const loss = h.history.loss[0] as number;
+          addLog(`   Epoch ${i + 1}/12 → loss: ${loss.toFixed(4)}`);
+          setProgress(((i + 1) / 12) * 100);
+          await new Promise((r) => setTimeout(r, 400 / gpu.speed));
+        }
 
-      const xs = tf.randomNormal([100, 10]);
-      const ys = tf.randomUniform([100, 1]).greater(0.5);
+        xs.dispose();
+        ys.dispose();
+        model.dispose();
 
-      for (let i = 0; i < 12; i++) {
-        if (!running || paused) break;
-        const h = await model.fit(xs, ys, { epochs: 1 });
-        const loss = Array.isArray(h.history.loss) ? h.history.loss[0] : h.history.loss;
-        addLog(`   Epoch ${i + 1}/12 → loss: ${loss.toFixed(4)}`);
-        setProgress(((i + 1) / 12) * 100);
-        await new Promise(r => setTimeout(r, 400 / gpu.speed));
-      }
-
-      xs.dispose();
-      ys.dispose();
-
-      if (running && !paused) {
         const reward = (job.reward * gpu.speed).toFixed(2);
-        setEarnings(prev => prev + parseFloat(reward));
+        setEarnings((prev) => prev + parseFloat(reward));
         addLog(`✅ Proof verified! +${reward} $SY earned`);
         playSound(1000);
         setShowConfetti(true);
         setTimeout(() => setShowConfetti(false), 4000);
-        await new Promise(r => setTimeout(r, 1500));
-      }
-    }
-  };
+        setProgress(0);
 
-  useEffect(() => {
-    if (running) startNode();
-    return () => setRunning(false);
+        if (running) runJob(); // Chain next job
+      };
+      runJob();
+    }
   }, [running, paused, gpu]);
 
   return (
     <>
-      <AnimatePresence>{showConfetti && <Confetti recycle={false} />}</AnimatePresence>
-
+      {showConfetti && <Confetti recycle={false} />}
       <main className="min-h-screen bg-black text-white flex items-center justify-center p-6 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-black to-blue-900/20" />
 
@@ -130,8 +111,76 @@ export default function Home() {
             <div className="space-y-6">
               <select
                 value={gpu.name}
-                onChange={e => setGpu(gpus.find(g => g.name === e.target.value)!)}
+                onChange={(e) => setGpu(gpus.find((g) => g.name === e.target.value)!)}
                 className="w-full p-4 bg-gray-900 border border-purple-600 rounded-xl text-xl"
               >
-                {gpus.map(g => (
-                  <option key={g
+                {gpus.map((g) => (
+                  <option key={g.name}>{g.name} ({g.power}W)</option>
+                ))}
+              </select>
+
+              <button
+                onClick={() => setRunning(true)}
+                className="w-full py-6 bg-gradient-to-r from-purple-600 to-cyan-600 rounded-2xl text-2xl font-bold hover:scale-105 transition"
+              >
+                <Play className="inline mr-3" /> Start Node
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <div className="text-3xl font-bold text-green-400">
+                  +{earnings.toFixed(2)} $SY
+                </div>
+                <div className="flex gap-4">
+                  <button onClick={() => setPaused(!paused)} className="p-3 bg-yellow-600 rounded-lg">
+                    {paused ? <Play /> : <Pause />}
+                  </button>
+                  <button onClick={() => { setRunning(false); setPaused(false); }} className="p-3 bg-red-600 rounded-lg">
+                    Stop
+                  </button>
+                </div>
+              </div>
+
+              <div className="w-full h-4 bg-gray-800 rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-purple-500 to-cyan-500"
+                  animate={{ width: `${progress}%` }}
+                />
+              </div>
+
+              <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 h-80 overflow-y-auto font-mono text-sm">
+                {logs.map((log, i) => (
+                  <div key={i} className="text-green-400">{log}</div>
+                ))}
+                <div ref={logsEndRef} />
+              </div>
+
+              {/* Neural net visualizer */}
+              <div className="grid grid-cols-8 gap-2">
+                {Array(32).fill(0).map((_, i) => (
+                  <motion.div
+                    key={i}
+                    className="w-6 h-6 bg-purple-600 rounded-full"
+                    animate={{
+                      scale: running && !paused ? [1, 1.5, 1] : 1,
+                      opacity: running && !paused ? [0.5, 1, 0.5] : 0.4,
+                    }}
+                    transition={{ repeat: Infinity, duration: 1.5, delay: i * 0.05 }}
+                  />
+                ))}
+              </div>
+
+              <button
+                onClick={() => navigator.clipboard.writeText(`I earned ${earnings.toFixed(2)} $SY on GenSyn Playground! https://gensynplayground.vercel.app`)}
+                className="w-full py-4 bg-gray-800 rounded-xl flex items-center justify-center gap-3 hover:bg-gray-700 transition"
+              >
+                <Share2 size={20} /> Copy Share Link
+              </button>
+            </div>
+          )}
+        </div>
+      </main>
+    </>
+  );
+}
